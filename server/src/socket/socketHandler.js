@@ -1,6 +1,5 @@
 import { roomManager } from '../models/RoomManager.js';
 import { Participant } from '../models/Participant.js';
-import { MongoRoom } from '../models/MongoRoom.js';
 
 export const registerSocketHandlers = (io) => {
   io.on('connection', (socket) => {
@@ -19,7 +18,7 @@ export const registerSocketHandlers = (io) => {
       return { room, participant };
     };
 
-    socket.on('join_room', async ({ roomId, username, userId }) => {
+    socket.on('join_room', ({ roomId, username, userId }) => {
       if (!roomId || !userId) {
         return sendError('roomId and userId are required to join a room.');
       }
@@ -46,18 +45,6 @@ export const registerSocketHandlers = (io) => {
         role: participant.role,
         participants: room.toParticipantList()
       });
-
-      try {
-        await MongoRoom.findOneAndUpdate(
-          { roomId: cleanRoomId },
-          {
-            hostUserId: room.hostUserId,
-            lastVideoId: room.videoId,
-            participantCount: room.participants.size
-          },
-          { upsert: true, new: true }
-        );
-      } catch (err) {}
     });
 
     socket.on('leave_room', ({ roomId }) => {
@@ -129,7 +116,7 @@ export const registerSocketHandlers = (io) => {
       io.to(room.roomId).emit('sync_state', room.getSyncState());
     });
 
-    socket.on('change_video', async ({ videoId }) => {
+    socket.on('change_video', ({ videoId }) => {
       const { room, participant } = getContext();
       if (!room || !participant) return sendError('Room or participant context missing.');
 
@@ -141,10 +128,6 @@ export const registerSocketHandlers = (io) => {
 
       room.updatePlayback({ videoId, currentTime: 0, playState: 'playing' });
       io.to(room.roomId).emit('sync_state', room.getSyncState());
-
-      try {
-        await MongoRoom.updateOne({ roomId: room.roomId }, { lastVideoId: videoId });
-      } catch (err) {}
     });
 
     socket.on('assign_role', ({ userId, role }) => {

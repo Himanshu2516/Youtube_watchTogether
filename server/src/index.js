@@ -3,7 +3,6 @@ import { createServer } from 'http';
 import { Server } from 'socket.io';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import { connectDB } from './config/db.js';
 import { registerSocketHandlers } from './socket/socketHandler.js';
 import { roomManager } from './models/RoomManager.js';
 
@@ -53,8 +52,7 @@ app.get('/api/rooms/:roomId', (req, res) => {
   });
 });
 
-const startServer = async () => {
-  await connectDB();
+const startServer = () => {
   httpServer.listen(PORT, () => {
     console.log(`Watch Party Backend running on port ${PORT}`);
   });

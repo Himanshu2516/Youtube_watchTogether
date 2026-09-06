@@ -1,7 +1,7 @@
 services:
   # 1. Backend Web Service (Socket.IO + Express)
   - type: web
-    name: watch-party-backend
+    name: Youtube-watchTogether-backend
     env: node
     rootDir: server
     buildCommand: npm install
@@ -16,7 +16,7 @@ services:
 
   # 2. Frontend Static Site (Vite React)
   - type: web
-    name: watch-party-frontend
+    name: Youtube-watchTogether-frontend
     env: static
     rootDir: client
     buildCommand: npm install && npm run build
