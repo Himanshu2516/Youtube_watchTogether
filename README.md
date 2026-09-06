@@ -182,6 +182,3 @@ Be ready to explain, in your own words:
 
 ---
 
-## License
-
-MIT License.
