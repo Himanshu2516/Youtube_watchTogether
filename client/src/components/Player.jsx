@@ -221,9 +221,45 @@ export const Player = ({
       }}
       ref={containerRef}
     >
-      <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none' }}>
+      <div style={{
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        width: '100%',
+        height: '100%',
+        pointerEvents: 'none',
+        filter: playState === 'paused' ? 'blur(2.5px) brightness(0.85)' : 'none',
+        transition: 'filter 0.3s ease'
+      }}>
         <div id="youtube-iframe-target" style={{ width: '100%', height: '100%' }}></div>
       </div>
+
+      {playState === 'paused' && (
+        <div style={{
+          position: 'absolute',
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          zIndex: 35,
+          pointerEvents: 'none',
+          backgroundColor: 'rgba(0, 0, 0, 0.65)',
+          backdropFilter: 'blur(4px)',
+          border: '1px solid rgba(255, 255, 255, 0.2)',
+          color: '#ffffff',
+          padding: '6px 16px',
+          borderRadius: '20px',
+          fontSize: '0.85rem',
+          fontWeight: 700,
+          letterSpacing: '0.12em',
+          textTransform: 'uppercase',
+          boxShadow: '0 4px 20px rgba(0, 0, 0, 0.35)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '6px'
+        }}>
+          PAUSED
+        </div>
+      )}
 
       <div style={{
         position: 'absolute',
