@@ -175,19 +175,7 @@ Be ready to explain, in your own words:
 ---
 
 ## Known Limitations / Future Improvements
-<<<<<<< HEAD
 
 - Room and playback state resets if the server restarts (no database persistence yet).
 - No authentication — users identify themselves with just a display name.
 - No horizontal scaling support yet (single server instance; a Redis Pub/Sub adapter would be the next step for multi-instance deployments).
-
----
-
-=======
-
-- Room and playback state resets if the server restarts (no database persistence yet).
-- No authentication — users identify themselves with just a display name.
-- No horizontal scaling support yet (single server instance; a Redis Pub/Sub adapter would be the next step for multi-instance deployments).
-
----
->>>>>>> 6cc4fab (...)
