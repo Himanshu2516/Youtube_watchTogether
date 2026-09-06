@@ -1,17 +1,14 @@
 # YouTube Watch Party — Real-Time Synchronized Web App
 
-A full-stack, real-time synchronized YouTube Watch Party application built with **React (Vite)**, **Node.js**, **Express**, **Socket.IO**, and **MongoDB (Mongoose)**. Multiple users can watch YouTube videos together with synchronized play/pause/seek/change-video, room-based access via unique codes/links, and role-based access control (Host / Moderator / Participant).
-
-This README covers the deliverables required for the assignment: setup & run instructions, the live deployment URL, an architecture overview of how WebSockets integrate with the app, and a code walkthrough guide.
+A full-stack, real-time synchronized YouTube Watch Party application built with **React (Vite)**, **Node.js**, **Express**, and **Socket.IO**. Multiple users can watch YouTube videos together with synchronized play/pause/seek/change-video, room-based access via unique codes/links, and role-based access control (Host / Moderator / Participant).
 
 ---
 
-## Live Deployment
+## Live Demo
 
-- **Frontend App:** `https://<your-client-app>.onrender.com`
-- **Backend WebSocket Server:** `https://<your-server-app>.onrender.com`
+**App:** https://youtube-watchtogether-0unv.onrender.com
 
-> Replace both URLs above with your actual Render (or Vercel/Railway) URLs after deployment.
+> Note: the backend is hosted on Render's free tier and sleeps after ~15 minutes of inactivity. The first load after idle time may take 30–60 seconds while it wakes up.
 
 ---
 
@@ -28,15 +25,15 @@ This README covers the deliverables required for the assignment: setup & run ins
 | Broadcast role updates to the room | ✅ |
 | Basic chat | ✅ (bonus) |
 | Emoji reactions | ✅ (bonus) |
-| Persistent room metadata (MongoDB) | ✅ (bonus, with in-memory fallback) |
-| Host transfer (manual + automatic on disconnect) | ✅ (bonus) |
+| Transfer host (manual + automatic on disconnect) | ✅ (bonus) |
+| OOP structure (Room, Participant classes) | ✅ (bonus) |
 
 ---
 
 ## Project Structure
 
 ```
-Web3task_task/
+watch-party/
 ├── client/                        # React + Vite frontend (plain JavaScript)
 │   ├── src/
 │   │   ├── components/
@@ -64,18 +61,14 @@ Web3task_task/
 │   └── vite.config.js
 ├── server/                        # Express + Socket.IO backend
 │   ├── src/
-│   │   ├── config/
-│   │   │   └── db.js              # MongoDB connection (graceful fallback if unset)
 │   │   ├── models/
 │   │   │   ├── Participant.js     # OOP class: role + permission methods
 │   │   │   ├── Room.js            # OOP class: participants map + playback state
-│   │   │   ├── RoomManager.js     # Singleton managing all active in-memory rooms
-│   │   │   └── MongoRoom.js       # Mongoose schema for room metadata persistence
+│   │   │   └── RoomManager.js     # Singleton managing all active in-memory rooms
 │   │   ├── socket/
 │   │   │   └── socketHandler.js   # All Socket.IO events + server-side RBAC checks
 │   │   └── index.js               # Express + HTTP + Socket.IO server entry point
-│   └── .env.example
-├── render.yaml                    # Render Blueprint for one-click deployment
+├── render.yaml                    # Render Blueprint for deployment
 └── README.md
 ```
 
@@ -88,9 +81,11 @@ Web3task_task/
 | Frontend | React 18 + Vite (plain JavaScript) |
 | Backend | Node.js + Express |
 | Realtime | Socket.IO |
-| Database | MongoDB via Mongoose (optional — in-memory fallback if `MONGODB_URI` is unset) |
+| State storage | In-memory (per-room state managed by `RoomManager`) |
 | Video | YouTube IFrame Player API |
-| Deployment | Render (backend as Web Service, frontend as Static Site) |
+| Deployment | Render |
+
+> **Note on persistence:** This version stores all room, participant, and playback state in server memory for lowest possible sync latency. There is no database in the current deployment, so active rooms are cleared if the server restarts. Persisting room metadata (e.g. via MongoDB) is a natural next step and was considered but left out to keep the real-time path as simple and fast as possible for this submission.
 
 ---
 
@@ -99,7 +94,6 @@ Web3task_task/
 ### Prerequisites
 - Node.js v18+
 - npm
-- (Optional) A MongoDB connection string — local MongoDB or a free MongoDB Atlas cluster
 
 ### 1. Install dependencies
 
@@ -110,15 +104,13 @@ cd ../client && npm install
 
 ### 2. Configure environment variables
 
-**`server/.env`** (copy from `server/.env.example`):
+**`server/.env`:**
 ```env
 PORT=5000
 CLIENT_URL=http://localhost:5173
-MONGODB_URI=mongodb://localhost:27017/watchparty
 ```
-If `MONGODB_URI` is left blank, the server runs entirely in-memory — room/playback sync still works, only persistence across restarts is lost.
 
-**`client/.env`** (optional for local dev, required for deployment):
+**`client/.env`:**
 ```env
 VITE_SERVER_URL=http://localhost:5000
 ```
@@ -170,28 +162,23 @@ The frontend also disables controls visually for unauthorized roles, but that's 
 
 ---
 
-## Deployment Guide (Render)
-
-1. Push the repository to GitHub.
-2. Create a MongoDB Atlas free-tier cluster (or skip this for in-memory-only mode) and copy its connection string.
-3. On Render, deploy `server/` as a **Web Service** (Build: `npm install`, Start: `node src/index.js`). Add environment variables `MONGODB_URI` and `CLIENT_URL`.
-4. Deploy `client/` as a **Static Site** (Build: `npm run build`, Publish directory: `dist`). Set `VITE_SERVER_URL` to the backend's Render URL before building.
-5. Update the backend's `CLIENT_URL` to the frontend's live URL, then redeploy the backend so CORS/Socket.IO origin checks pass.
-6. Test in two browser tabs against the live URLs to confirm sync, roles, chat, and reactions all work in production.
-
-(Alternatively, use the included `render.yaml` to deploy both services as a single Render Blueprint.)
-
----
-
 ## Code Walkthrough Readiness
 
 Be ready to explain, in your own words:
 - **Socket.IO**: how `io.to(roomId).emit(...)` scopes broadcasts to a room, and why the server re-validates permissions on every event rather than trusting the client.
 - **React**: how `SocketContext` + `useRoom` keep all room state derived purely from socket events (no client-side prediction beyond the anti-feedback-loop guard).
-- **Express**: its role here is mostly serving as the HTTP server that Socket.IO attaches to, plus any REST routes you added for room lookup.
+- **Express**: its role here is mostly serving as the HTTP server that Socket.IO attaches to.
 - **RBAC logic**: the `Participant`/`Room`/`RoomManager` class design and why permission checks live on the server.
-- **Deployment choices**: why the backend needs a persistent Web Service (not serverless) for WebSockets, and how env vars connect the two deployed services.
-- **Trade-offs**: in-memory state vs. MongoDB persistence, the host-disconnect policy, and any sync edge cases you hit while building.
+- **Deployment choices**: why the backend needs a persistent Web Service (not serverless) for WebSockets.
+- **Trade-offs**: in-memory state (chosen for latency) vs. database persistence (a planned future improvement), and the host-disconnect policy.
+
+---
+
+## Known Limitations / Future Improvements
+
+- Room and playback state resets if the server restarts (no database persistence yet).
+- No authentication — users identify themselves with just a display name.
+- No horizontal scaling support yet (single server instance; a Redis Pub/Sub adapter would be the next step for multi-instance deployments).
 
 ---
 
