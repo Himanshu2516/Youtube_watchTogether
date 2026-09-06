@@ -3,10 +3,16 @@ import { createServer } from 'http';
 import { Server } from 'socket.io';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { registerSocketHandlers } from './socket/socketHandler.js';
 import { roomManager } from './models/RoomManager.js';
 
 dotenv.config();
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const clientDistPath = path.join(__dirname, '../../client/dist');
 
 const app = express();
 const httpServer = createServer(app);
@@ -34,6 +40,8 @@ const io = new Server(httpServer, {
 
 registerSocketHandlers(io);
 
+app.use(express.static(clientDistPath));
+
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
@@ -49,6 +57,17 @@ app.get('/api/rooms/:roomId', (req, res) => {
     participantCount: room.participants.size,
     videoId: room.videoId,
     playState: room.playState
+  });
+});
+
+app.get('*', (req, res) => {
+  if (req.path.startsWith('/api/')) {
+    return res.status(404).json({ error: 'API endpoint not found' });
+  }
+  res.sendFile(path.join(clientDistPath, 'index.html'), (err) => {
+    if (err) {
+      res.status(404).send('Not Found');
+    }
   });
 });
 
