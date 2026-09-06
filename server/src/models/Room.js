@@ -112,7 +112,8 @@ export class Room {
       videoId: this.videoId,
       playState: this.playState,
       currentTime: currentPos,
-      updatedAt: this.updatedAt
+      updatedAt: this.updatedAt,
+      participants: this.toParticipantList()
     };
   }
 

@@ -89,6 +89,30 @@ export const RoomPage = () => {
     setUsername(trimmed);
   };
 
+  if (!cleanRoomId || cleanRoomId.length !== 10) {
+    return (
+      <div style={{
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '24px',
+        backgroundColor: 'var(--bg-page)'
+      }}>
+        <div className="solid-card" style={{ padding: '32px', maxWidth: '420px', textAlign: 'center' }}>
+          <AlertTriangle size={40} color="#ef4444" style={{ marginBottom: '12px' }} />
+          <h2 style={{ fontSize: '1.4rem', marginBottom: '8px' }}>Room Not Found</h2>
+          <p style={{ color: 'var(--text-muted)', marginBottom: '20px', fontSize: '0.9rem' }}>
+            The room link or code you entered is invalid.
+          </p>
+          <button className="btn-primary" onClick={() => navigate('/')} style={{ width: '100%' }}>
+            <Home size={16} /> Return to Home
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   if (!username) {
     return (
       <div style={{

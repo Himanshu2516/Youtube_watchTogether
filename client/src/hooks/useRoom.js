@@ -22,6 +22,11 @@ export const useRoom = (roomId, username, userId) => {
       if (data.videoId) setVideoId(data.videoId);
       if (data.playState) setPlayState(data.playState);
       if (typeof data.currentTime === 'number') setCurrentTime(data.currentTime);
+      if (data.participants) {
+        setParticipants(data.participants);
+        const me = data.participants.find(p => p.userId === userId);
+        if (me) setMyRole(me.role);
+      }
     };
 
     const handleUserJoined = (data) => {
