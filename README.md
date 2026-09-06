@@ -46,28 +46,28 @@ watch-party/
 │   │   │   ├── Toast.jsx          # Error/notification toasts (e.g. permission denied)
 │   │   │   └── UrlInputForm.jsx   # Paste YouTube URL to change video
 │   │   ├── context/
-│   │   │   └── SocketContext.jsx  # Socket.IO connection provider
+│   │   │   └── SocketContext.jsx  # Socket.IO connection provider (reads VITE_SERVER_URL)
 │   │   ├── hooks/
-│   │   │   └── useRoom.js         # Room state hook (participants, role, playback state)
+│   │   │   └── useRoom.js         # Room state hook: listens to all socket events, exposes action callbacks
 │   │   ├── pages/
 │   │   │   ├── HomePage.jsx       # Create / join room
 │   │   │   └── RoomPage.jsx       # Main watch party screen
 │   │   ├── utils/
-│   │   │   └── youtube.js         # YouTube URL → video ID parser
-│   │   ├── App.jsx
-│   │   ├── index.css
+│   │   │   └── youtube.js         # extractYouTubeId() — parses a pasted URL or raw ID into a video ID
+│   │   ├── App.jsx                # Routes: "/" (Home) and "/room/:roomId" (Room)
+│   │   ├── index.css              # Design tokens, badges, buttons, floating-reaction animation
 │   │   └── main.jsx
 │   ├── index.html
 │   └── vite.config.js
 ├── server/                        # Express + Socket.IO backend
 │   ├── src/
 │   │   ├── models/
-│   │   │   ├── Participant.js     # OOP class: role + permission methods
-│   │   │   ├── Room.js            # OOP class: participants map + playback state
+│   │   │   ├── Participant.js     # OOP class: role + canControlPlayback()/canManageRoom()
+│   │   │   ├── Room.js            # OOP class: participants map, playback state, role/host-transfer logic
 │   │   │   └── RoomManager.js     # Singleton managing all active in-memory rooms
 │   │   ├── socket/
 │   │   │   └── socketHandler.js   # All Socket.IO events + server-side RBAC checks
-│   │   └── index.js               # Express + HTTP + Socket.IO server entry point
+│   │   └── index.js               # Express app + HTTP server + Socket.IO + serves the built frontend
 ├── render.yaml                    # Render Blueprint for deployment
 └── README.md
 ```
@@ -83,9 +83,11 @@ watch-party/
 | Realtime | Socket.IO |
 | State storage | In-memory (per-room state managed by `RoomManager`) |
 | Video | YouTube IFrame Player API |
-| Deployment | Render |
+| Deployment | Render (single Web Service) |
 
-> **Note on persistence:** This version stores all room, participant, and playback state in server memory for lowest possible sync latency. There is no database in the current deployment, so active rooms are cleared if the server restarts. Persisting room metadata (e.g. via MongoDB) is a natural next step and was considered but left out to keep the real-time path as simple and fast as possible for this submission.
+> **Note on architecture:** The backend (`server/src/index.js`) is a single Express + Socket.IO server that both handles all real-time room/playback logic **and** serves the built React frontend (`client/dist`) as static files, with a catch-all route falling back to `index.html` so client-side routes like `/room/:roomId` work correctly even on a direct page load/refresh. This means the whole app runs as one deployed service rather than two separate frontend/backend deployments.
+
+> **Note on persistence:** All room, participant, and playback state is stored in server memory for lowest possible sync latency. There is no database in the current deployment, so active rooms are cleared if the server restarts. Persisting room metadata (e.g. via MongoDB) is a natural next step and was considered but left out to keep the real-time path as simple and fast as possible for this submission.
 
 ---
 
@@ -134,12 +136,17 @@ Open `http://localhost:5173` in two or more browser tabs to test multi-user sync
 
 The Express server is the **single source of truth** for every room. Clients never trust their own local state — they always wait for the server to confirm and broadcast it.
 
-1. **Connect & Join** — On `join_room`, the server creates or looks up a `Room` (via `RoomManager`), builds a `Participant` for the socket (Host if the room is new, Participant otherwise), and immediately sends the joiner the current `sync_state` so there's no flash of default state.
-2. **Action → Validate → Broadcast** — For every playback action (`play`, `pause`, `seek`, `change_video`), the client emits the event; the server looks up the sender's `Participant`, calls `canControlPlayback()`, and only if authorized does it update the `Room`'s in-memory state and broadcast `sync_state` to everyone in the room (including the sender). Unauthorized attempts get an `error` event back, not silence.
-3. **Role management** — `assign_role` and `remove_participant` follow the same pattern but check `canManageRoom()` (Host-only), then broadcast `role_assigned` / `participant_removed` with the updated participant list.
-4. **Anti-feedback-loop guard** — When a client's `Player.jsx` applies an incoming `sync_state` to the YouTube IFrame player, it sets an `isServerUpdate` ref flag before calling `seekTo()`/`playVideo()`/`pauseVideo()`. The player's own `onStateChange` callback checks this flag and ignores the event if it was server-triggered, preventing an infinite emit loop.
-5. **Drift correction** — Clients periodically compare their local playback time to the server's last known `currentTime` (adjusted for elapsed time); if drift exceeds ~1.5 seconds, the client silently reseeks without emitting a new event.
-6. **Disconnect handling** — On `disconnect`, the participant is removed from the `Room`; if they were Host, the role auto-transfers to the longest-connected remaining participant. If the room becomes empty, it's deleted from memory.
+1. **Connect & Join** — On `join_room`, the server looks up or creates a `Room` (via `RoomManager.getOrCreateRoom`), builds a `Participant` for the socket (the first joiner becomes Host, everyone after becomes Participant by default), and immediately sends the joiner the current `sync_state` so there's no flash of default state.
+2. **Action → Validate → Broadcast** — For every playback action (`play`, `pause`, `seek`, `change_video`), the client emits the event; the server looks up the sender's `Participant`, calls `canControlPlayback()`, and only if authorized does it update the `Room`'s in-memory state (`updatePlayback()`) and broadcast `sync_state` to everyone in the room (including the sender). Unauthorized attempts get an `error` event back, not silence.
+3. **Role management** — `assign_role` and `remove_participant` follow the same pattern but check `canManageRoom()` (Host-only), then broadcast `role_assigned` / `participant_removed` with the updated participant list. Host transfer reuses the same `assign_role` flow with `role: 'host'`, which internally calls `Room.transferHost()`.
+4. **Anti-feedback-loop guard** — When the client's `Player` component applies an incoming `sync_state` to the YouTube IFrame player, it flags the update as server-driven before calling `seekTo()`/`playVideo()`/`pauseVideo()`, so the player's own `onStateChange` callback ignores it instead of re-emitting a new action — this prevents an infinite emit loop.
+5. **Drift correction** — `Room.getSyncState()` calculates the current playback position on the fly (adding elapsed time since `updatedAt` if the video is playing), so a client joining or reconnecting always gets an accurate "live" timestamp rather than a stale one.
+6. **Disconnect handling** — On `disconnect`, the participant is removed from the `Room`; if they were Host, `getOldestParticipant()` picks the longest-connected remaining participant and promotes them automatically. If the room becomes empty, it's deleted from memory.
+
+### REST endpoints (in addition to WebSocket events)
+
+- `GET /api/health` — basic server health check.
+- `GET /api/rooms/:roomId` — returns whether a room currently exists and its participant count/video/play state, useful for validating a room code before attempting to join over the socket.
 
 ---
 
@@ -147,15 +154,14 @@ The Express server is the **single source of truth** for every room. Clients nev
 
 | Role | Assigned by | Permissions |
 |---|---|---|
-| Host | Automatic (room creator) | Full control: play/pause, seek, change video, assign roles, remove participants, transfer host |
+| Host | Automatic (first person to join a room) | Full control: play/pause, seek, change video, assign roles, remove participants, transfer host |
 | Moderator | Host | Play/pause, seek, change video |
 | Participant | Host (default for joiners) | Watch only |
 
 Enforcement happens **server-side**, not just in the UI:
 ```js
-const { room, participant } = getContext(socket);
 if (!participant.canControlPlayback()) {
-  return socket.emit('error', { message: 'Permission denied: Host or Moderator required' });
+  return sendError('Permission denied: Only Host or Moderator can control playback.');
 }
 ```
 The frontend also disables controls visually for unauthorized roles, but that's a UX convenience — the real enforcement is the check above, since a client could otherwise emit raw socket events from the browser console.
@@ -166,11 +172,11 @@ The frontend also disables controls visually for unauthorized roles, but that's 
 
 Be ready to explain, in your own words:
 - **Socket.IO**: how `io.to(roomId).emit(...)` scopes broadcasts to a room, and why the server re-validates permissions on every event rather than trusting the client.
-- **React**: how `SocketContext` + `useRoom` keep all room state derived purely from socket events (no client-side prediction beyond the anti-feedback-loop guard).
-- **Express**: its role here is mostly serving as the HTTP server that Socket.IO attaches to.
-- **RBAC logic**: the `Participant`/`Room`/`RoomManager` class design and why permission checks live on the server.
-- **Deployment choices**: why the backend needs a persistent Web Service (not serverless) for WebSockets.
-- **Trade-offs**: in-memory state (chosen for latency) vs. database persistence (a planned future improvement), and the host-disconnect policy.
+- **React**: how `SocketContext` establishes and holds the single socket connection, and how `useRoom` derives all room state (`participants`, `myRole`, `videoId`, `playState`, `currentTime`, `chatMessages`, `reactions`) purely from socket event listeners, exposing action functions (`play`, `pause`, `seek`, `changeVideo`, `assignRole`, `removeParticipant`, `transferHost`, `sendMessage`, `sendReaction`) that simply emit to the server.
+- **Express**: it serves double duty — the Socket.IO server for real-time events, and (via `express.static` + a catch-all route) the built React app itself, so the whole project deploys as one service.
+- **RBAC logic**: the `Participant`/`Room`/`RoomManager` class design and why permission checks live on the server, not the client.
+- **Deployment choices**: why a single combined Express service works well here for a project this size, and how the catch-all route avoids "Not Found" errors on direct navigation to `/room/:roomId`.
+- **Trade-offs**: in-memory state (chosen for latency) vs. database persistence (a planned future improvement), and the host-disconnect policy (auto-promote the longest-connected participant).
 
 ---
 
